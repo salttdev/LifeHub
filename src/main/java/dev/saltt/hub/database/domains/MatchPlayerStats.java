@@ -6,6 +6,7 @@ public record MatchPlayerStats(
         UUID matchId,
         UUID playerUuid,
         int kills,
+        int deaths,
         int assists,
         long damageDealt,
         long damageTaken

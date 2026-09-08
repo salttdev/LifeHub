@@ -11,17 +11,21 @@ import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.util.Config;
 import dev.saltt.hub.database.Database;
-import dev.saltt.hub.database.FlushOrchestrator;
+import dev.saltt.hub.database.repos.LifeMatchRepository;
 import dev.saltt.hub.database.repos.MatchPlayerStatsGameFlushRepository;
 import dev.saltt.hub.database.repos.PlayerRepository;
-import dev.saltt.hub.database.repos.SurvivalGamesFlushWriter;
 import dev.saltt.hub.database.repos.SurvivalGamesPlayerGameFlushRepository;
-
-import dev.saltt.hub.grpc.FlushServiceImpl;
-import dev.saltt.hub.grpc.HeartbeatServiceImpl;
+import dev.saltt.hub.database.results.MatchResultWriter;
+import dev.saltt.hub.database.results.SurvivalGamesResultSink;
 import dev.saltt.hub.grpc.LifePlayerServiceImpl;
+import dev.saltt.hub.grpc.MatchmakerServiceImpl;
+import dev.saltt.hub.matchmaking.MatchmakingService;
+import dev.saltt.hub.matchmaking.commands.QueueCommand;
+import dev.saltt.hub.matchmaking.commands.SpectateCommand;
 import io.grpc.Server;
-import io.grpc.ServerBuilder;
+// The shaded transport is what grpc-netty-shaded ships, and it is the only one on the classpath.
+// ServerBuilder.forPort has no address form, so binding a specific interface needs this directly.
+import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder;
 
 import javax.annotation.Nonnull;
 import java.net.InetSocketAddress;
@@ -40,11 +44,12 @@ public class Main extends JavaPlugin {
     private Database database;
     private PlayerService playerService;
 
-    private FlushOrchestrator orchestrator;
     private Server grpcServer;
     private ExecutorService grpcExecutor;
 
     private PlayerRepository playerRepo;
+    private MatchResultWriter matchResults;
+    private MatchmakingService matchmaking;
 
     public Main(@Nonnull JavaPluginInit init) {
         super(init);
@@ -55,6 +60,7 @@ public class Main extends JavaPlugin {
 
     public static Main getInstance() { return instance; }
     public PlayerService players() { return playerService; }
+    public MatchmakingService matchmaking() { return matchmaking; }
 
     @Override
     protected void setup() {
@@ -65,16 +71,24 @@ public class Main extends JavaPlugin {
 
         this.database = Database.connect(cfg);
 
+        this.playerRepo = new PlayerRepository(database.jdbi());
+        this.playerService = new PlayerService(playerRepo);
 
-        var statsRepo    = new MatchPlayerStatsGameFlushRepository(database.jdbi());
-        var sgRepo       = new SurvivalGamesPlayerGameFlushRepository(database.jdbi());
-        var sgWriter     = new SurvivalGamesFlushWriter(statsRepo, sgRepo);
-        this.orchestrator = new FlushOrchestrator(database.jdbi(), sgWriter);
+        // One writer for every game type: the common rows here, the per-mode table in a sink.
+        this.matchResults = new MatchResultWriter(
+                database.jdbi(),
+                new LifeMatchRepository(database.jdbi()),
+                new MatchPlayerStatsGameFlushRepository(database.jdbi()))
+                .register(new SurvivalGamesResultSink(
+                        new SurvivalGamesPlayerGameFlushRepository(database.jdbi())));
 
-        playerRepo = new PlayerRepository(database.jdbi());
+        this.matchmaking = new MatchmakingService(config);
 
         getEventRegistry().registerGlobal(PlayerReadyEvent.class, this::onPlayerReady);
         getEventRegistry().registerGlobal(PlayerDisconnectEvent.class, this::onPlayerDisconnect);
+
+        getCommandRegistry().registerCommand(new QueueCommand(matchmaking));
+        getCommandRegistry().registerCommand(new SpectateCommand(matchmaking));
 
         LOGGER.at(Level.INFO).log("[LifeHub] Setup complete");
     }
@@ -85,39 +99,41 @@ public class Main extends JavaPlugin {
         try {
             this.grpcExecutor = Executors.newFixedThreadPool(cfg.getApiThreads());
 
-            this.grpcServer = ServerBuilder.forPort(cfg.getApiPort())
-                    .executor(grpcExecutor)
-                    .addService(new FlushServiceImpl(orchestrator))
-                    .build()
-                    .start();
+            // Bound to one interface rather than the wildcard address, so a firewall rule that is
+            // mistyped or lost on a host rebuild does not silently expose an unauthenticated port.
+            InetSocketAddress bind = new InetSocketAddress(cfg.getApiBind(), cfg.getApiPort());
+            if (bind.isUnresolved()) {
+                // Netty's own failure for this names neither the value nor where it came from.
+                throw new IllegalStateException("ApiBind '" + cfg.getApiBind()
+                        + "' could not be resolved; use an address on this host, or 0.0.0.0");
+            }
 
-            this.grpcServer = ServerBuilder.forPort(cfg.getApiPort())
+            this.grpcServer = NettyServerBuilder.forAddress(bind)
                     .executor(grpcExecutor)
-                    .addService(new FlushServiceImpl(orchestrator))
                     .addService(new LifePlayerServiceImpl(playerRepo))
+                    .addService(new MatchmakerServiceImpl(matchmaking, matchResults))
                     .build()
                     .start();
 
-            this.grpcServer = ServerBuilder.forPort(cfg.getApiPort())
-                    .executor(grpcExecutor)
-                    .addService(new FlushServiceImpl(orchestrator))
-                    .addService(new LifePlayerServiceImpl(playerRepo))
-                    .addService(new HeartbeatServiceImpl(/* matchmaker */))   // <- add once matchmaker exists
-                    .build()
-                    .start();
-
-            LOGGER.at(Level.INFO).log("[LifeHub] Flush gRPC server listening on port " + cfg.getApiPort());
+            LOGGER.at(Level.INFO).log("[LifeHub] gRPC server listening on "
+                    + cfg.getApiBind() + ":" + cfg.getApiPort());
         } catch (Exception e) {
-            LOGGER.at(Level.SEVERE).log("[LifeHub] Failed to start flush gRPC server: " + e.getMessage());
+            LOGGER.at(Level.SEVERE).log("[LifeHub] Failed to start gRPC server on "
+                    + cfg.getApiBind() + ":" + cfg.getApiPort() + ": " + e.getMessage());
         }
-    }
 
+        // After the server is up: a match placed before the instancers can report back would beat
+        // its way into the cache with nowhere to answer.
+        matchmaking.start();
+    }
 
     @Override
     protected void shutdown() {
         LOGGER.at(Level.INFO).log("[LifeHub] Shutting down...");
 
-        // Reverse order: stop accepting flushes, drain, then close the pool.
+        // Reverse order: stop placing matches, stop accepting calls, drain, then close the pool.
+        if (matchmaking != null) matchmaking.close();
+
         if (grpcServer != null) {
             try {
                 grpcServer.shutdown().awaitTermination(10, TimeUnit.SECONDS);
@@ -148,6 +164,9 @@ public class Main extends JavaPlugin {
         String ip = address.getAddress().getHostAddress();
 
         playerService.onJoin(playerRef.getUuid(), playerRef.getUsername(), ip);
+
+        // They are on the hub, so whatever match the cache still holds them in is over for them.
+        matchmaking.onPlayerReady(playerRef.getUuid());
     }
 
     private void onPlayerDisconnect(PlayerDisconnectEvent event) {
@@ -158,5 +177,9 @@ public class Main extends JavaPlugin {
         if (playerRef == null) return;
 
         playerService.onLeave(playerRef.getUuid());
+
+        // Includes players leaving for an instancer: the referral already took them out, and this
+        // covers anyone who quit while queued.
+        matchmaking.onPlayerDisconnect(playerRef.getUuid());
     }
 }
