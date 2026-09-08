@@ -25,7 +25,8 @@ public final class Database implements AutoCloseable {
         hc.setPoolName("LifeHub-Hikari");
         HikariDataSource ds = new HikariDataSource(hc);
 
-        // Mod classloader so classpath:db/migration resolves inside a shaded jar.
+        // Mod classloader so classpath:db/migration resolves inside a shaded jar. One directory per
+        // table underneath it; Flyway scans them all and orders by version.
         Flyway.configure(Database.class.getClassLoader())
                 .dataSource(ds)
                 .locations("classpath:db/migration")
