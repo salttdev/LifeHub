@@ -8,13 +8,7 @@ import com.hypixel.hytale.codec.builder.BuilderCodec;
  * One instancer process the hub can put matches on.
  *
  * <p>Two addresses, and they are not interchangeable. GrpcHost/GrpcPort is the internal
- * InstancerService the hub dials for SetupMatch and SpectatorReserve; PlayerHost/PlayerPort is
- * what a client is referred to. On a tunnelled deployment the first is the tunnel address and the
- * second is the public one.
- *
- * <p>TODO: LifeProtocol has no node-registration rpc, so nodes cannot announce themselves and this
- * list is maintained by hand in LifeHub.json. Once the protocol grows a RegisterNode message
- * carrying these fields, NodePool can be fed from that instead of from config.
+ * InstancerService the hub dials; PlayerHost/PlayerPort is what a client is referred to.
  */
 public class InstancerNode {
 
@@ -24,37 +18,31 @@ public class InstancerNode {
 
     public static final BuilderCodec<InstancerNode> CODEC = BuilderCodec
             .builder(InstancerNode.class, InstancerNode::new)
-
             .append(new KeyedCodec<String>("Id", Codec.STRING),
-                    (node, value, info) -> node.id = strip(value),
-                    (node, info) -> node.id)
+                    (node, value, info) -> node.id = strip(value), (node, info) -> node.id)
             .add()
-
             .append(new KeyedCodec<String>("GrpcHost", Codec.STRING),
-                    (node, value, info) -> node.grpcHost = strip(value),
-                    (node, info) -> node.grpcHost)
+                    (node, value, info) -> node.grpcHost = strip(value), (node, info) -> node.grpcHost)
             .add()
-
             .append(new KeyedCodec<Integer>("GrpcPort", Codec.INTEGER),
                     (node, value, info) -> node.grpcPort = value == null ? DEFAULT_GRPC_PORT : value,
                     (node, info) -> node.grpcPort)
             .add()
-
             .append(new KeyedCodec<String>("PlayerHost", Codec.STRING),
-                    (node, value, info) -> node.playerHost = strip(value),
-                    (node, info) -> node.playerHost)
+                    (node, value, info) -> node.playerHost = strip(value), (node, info) -> node.playerHost)
             .add()
-
             .append(new KeyedCodec<Integer>("PlayerPort", Codec.INTEGER),
                     (node, value, info) -> node.playerPort = value == null ? DEFAULT_PLAYER_PORT : value,
                     (node, info) -> node.playerPort)
             .add()
-
             .append(new KeyedCodec<Integer>("MaxMatches", Codec.INTEGER),
                     (node, value, info) -> node.maxMatches = value == null ? DEFAULT_MAX_MATCHES : value,
                     (node, info) -> node.maxMatches)
             .add()
-
+            // Must name an entry in Regions; the node's own RpcConfig.Region should say the same.
+            .append(new KeyedCodec<String>("Region", Codec.STRING),
+                    (node, value, info) -> node.region = strip(value), (node, info) -> node.region)
+            .add()
             .build();
 
     private String id = "";
@@ -63,18 +51,20 @@ public class InstancerNode {
     private String playerHost = "";
     private int playerPort = DEFAULT_PLAYER_PORT;
     private int maxMatches = DEFAULT_MAX_MATCHES;
+    private String region = "";
 
     public InstancerNode() {
     }
 
     public InstancerNode(String id, String grpcHost, int grpcPort,
-                         String playerHost, int playerPort, int maxMatches) {
+                         String playerHost, int playerPort, int maxMatches, String region) {
         this.id = strip(id);
         this.grpcHost = strip(grpcHost);
         this.grpcPort = grpcPort;
         this.playerHost = strip(playerHost);
         this.playerPort = playerPort;
         this.maxMatches = maxMatches;
+        this.region = strip(region);
     }
 
     public String id() { return id; }
@@ -82,11 +72,9 @@ public class InstancerNode {
     public int grpcPort() { return grpcPort; }
     public String playerHost() { return playerHost; }
     public int playerPort() { return playerPort; }
-
-    /** Concurrent matches this node is given before the pool considers it full. */
     public int maxMatches() { return maxMatches; }
+    public String region() { return region; }
 
-    /** A node missing an address cannot be dialled or referred to, so it never gets a match. */
     public boolean isUsable() {
         return !id.isBlank() && !grpcHost.isBlank() && !playerHost.isBlank()
                 && isPort(grpcPort) && isPort(playerPort) && maxMatches > 0;
@@ -102,6 +90,7 @@ public class InstancerNode {
 
     @Override
     public String toString() {
-        return id + " (" + grpcHost + ":" + grpcPort + " -> " + playerHost + ":" + playerPort + ")";
+        return id + "[" + region + "] (" + grpcHost + ":" + grpcPort + " -> "
+                + playerHost + ":" + playerPort + ")";
     }
 }

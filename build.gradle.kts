@@ -1,19 +1,41 @@
 plugins {
     `maven-publish`
+    id("com.gradleup.shadow") version "8.3.0"
 }
 
 group = "dev.saltt"
-version = "1.0.0"
-version = "1.0.1"
+version = "1.2.0"
+
+val grpcVersion = "1.74.0"
+val protobufVersion = "4.31.1"
+
+// Must stay in step with the grpc and protobuf versions LifeProtocol was generated against.
+val protocolVersion = "v1.2.0"
 
 repositories {
+    mavenLocal()
     maven("https://jitpack.io")
     mavenCentral()
 }
 
 dependencies {
-    implementation("com.github.saltAgain:LifeCommon:v1.1.51")
-    implementation("com.github.Life-Steal:LifeProtocol:v1.1.0")
+    implementation("com.github.Life-Steal:LifeProtocol:$protocolVersion")
+    implementation("com.google.protobuf:protobuf-java:$protobufVersion")
+    implementation("io.grpc:grpc-netty-shaded:$grpcVersion")
+    implementation("io.grpc:grpc-stub:$grpcVersion")
+    implementation("io.grpc:grpc-protobuf:$grpcVersion")
+
+    implementation("org.jdbi:jdbi3-core:3.45.4")
+    implementation("com.zaxxer:HikariCP:6.3.0")
+    implementation("org.flywaydb:flyway-core:11.1.0")
+    implementation("org.flywaydb:flyway-mysql:11.1.0")
+    runtimeOnly("com.mysql:mysql-connector-j:9.1.0")
+
+    implementation("com.maxmind.geoip2:geoip2:5.0.2")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
+    implementation("org.slf4j:slf4j-api:2.0.16")
+
+    compileOnly("com.google.code.findbugs:jsr305:3.0.2")
 
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
@@ -21,7 +43,20 @@ dependencies {
 }
 
 java {
-    withSourcesJar()   // this is what makes source usable in consumers' IDEs
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+    withSourcesJar()
+}
+
+tasks.shadowJar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    mergeServiceFiles()
+
+    dependencies {
+        exclude(dependency("com.hypixel.hytale:Server:.*"))
+        exclude(dependency("dev.scaffoldit:.*:.*"))
+    }
 }
 
 publishing {

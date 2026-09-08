@@ -1,8 +1,8 @@
 {
     "Group": "Saltt",
     "Name": "LifeHub",
-    "Version": "1.0.1",
-    "Description": "A Hytale server mod",
+    "Version": "1.2.0",
+    "Description": "Life hub: matchmaker and database API",
     "Authors": [
         {
             "Name": "saltt"
@@ -10,5 +10,5 @@
     ],
     "DisabledByDefault": false,
     "IncludesAssetPack": false,
-    "Main": "dev.saltt.lifehub.Main"
+    "Main": "dev.saltt.hub.Main"
 }

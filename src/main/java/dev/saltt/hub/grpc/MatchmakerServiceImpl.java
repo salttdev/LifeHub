@@ -43,17 +43,14 @@ public final class MatchmakerServiceImpl extends MatchmakerServiceGrpc.Matchmake
                 throw new IllegalArgumentException("unknown status");
             }
 
-            LiveMatch match = matchmaking.matches().onHeartbeat(
+            matchmaking.onHeartbeat(
                     request.getMatchId(),
                     request.getGameType(),
                     request.getStatus(),
                     uuids(request.getConnectedPlayerIdsList(), "connected_player_ids"),
                     uuids(request.getClaimedPlayerIdsList(), "claimed_player_ids"),
-                    request.getAliveCount());
-
-            // A player the instancer has, or is still expecting, must not be pulled into a second
-            // lobby by the next pass.
-            match.roster().forEach(player -> matchmaking.queues().removeFromAll(player));
+                    request.getAliveCount(),
+                    request.getNodeId());
 
             observer.onNext(HeartbeatAck.newBuilder().setAcknowledged(true).build());
             observer.onCompleted();
@@ -84,16 +81,15 @@ public final class MatchmakerServiceImpl extends MatchmakerServiceGrpc.Matchmake
             }
 
             // Removed first: the players are free to queue again as soon as they are back on the
-            // hub, whatever the write does. node_id is only known from the hub's own record.
-            LiveMatch finished = matchmaking.matches().remove(request.getMatchId()).orElse(null);
-            if (finished != null) {
-                finished.roster().forEach(matchmaking.queues()::removeFromAll);
-            }
+            // hub, whatever the write does.
+            LiveMatch finished = matchmaking.onMatchFinished(request);
+            String nodeId = !request.getNodeId().isBlank() ? request.getNodeId()
+                    : finished == null ? null : finished.nodeId();
 
-            results.write(request, finished == null ? null : finished.nodeId());
+            results.write(request, nodeId);
 
             LOG.info("match " + request.getMatchId() + " (" + request.getGameType() + ") finished"
-                    + (request.getAbandoned() ? " abandoned" : "") + " with "
+                    + (request.getAbandoned() ? " abandoned" : "") + " on " + nodeId + " with "
                     + request.getPlayersCount() + " player result(s)");
 
             observer.onNext(MatchResultAck.newBuilder().setAcknowledged(true).build());
@@ -103,8 +99,7 @@ public final class MatchmakerServiceImpl extends MatchmakerServiceGrpc.Matchmake
             observer.onError(Status.INVALID_ARGUMENT
                     .withDescription(e.getMessage()).withCause(e).asRuntimeException());
         } catch (Exception e) {
-            // Not acknowledged, so the instancer's own retry (if any) can bring it back rather
-            // than the result being lost silently.
+            // Not acknowledged, so the instancer's own retry can bring it back.
             LOG.log(Level.SEVERE, "could not persist result for match " + request.getMatchId(), e);
             observer.onError(Status.INTERNAL
                     .withDescription("result not persisted").withCause(e).asRuntimeException());
@@ -119,7 +114,6 @@ public final class MatchmakerServiceImpl extends MatchmakerServiceGrpc.Matchmake
         return parsed;
     }
 
-    /** The instancer generates match ids as UUIDs, and the tables store CHAR(36). */
     private static void requireMatchId(String matchId) {
         if (matchId == null || matchId.isBlank()) {
             throw new IllegalArgumentException("match_id required");
@@ -133,7 +127,6 @@ public final class MatchmakerServiceImpl extends MatchmakerServiceGrpc.Matchmake
         }
     }
 
-    /** Parsed here so malformed input is INVALID_ARGUMENT rather than an INTERNAL further in. */
     private static UUID parseUuid(String raw, String field) {
         try {
             return UUID.fromString(raw.strip());

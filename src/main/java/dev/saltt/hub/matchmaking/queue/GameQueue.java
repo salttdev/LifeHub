@@ -7,9 +7,12 @@ import dev.saltt.life.protocol.GameType;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -25,13 +28,11 @@ import java.util.function.Supplier;
  */
 public final class GameQueue {
 
-    /** What a pass should do with this queue right now. */
     public enum Readiness {
         /** Below the minimum. */
         WAITING,
         /** At the minimum, still inside one of the two clocks. */
         FILLING,
-        /** Dispatch now. */
         READY
     }
 
@@ -96,7 +97,6 @@ public final class GameQueue {
         return true;
     }
 
-    /** Starts the clocks on the crossing, and restarts the fill window on every join above it. */
     private void onJoin() {
         long now = System.currentTimeMillis();
         if (players.size() < rules.get().minPlayers()) {
@@ -110,9 +110,8 @@ public final class GameQueue {
 
     /**
      * Dropping back below the minimum stops both clocks; a lobby that refills starts its wait
-     * again rather than inheriting the abandoned one. A leave that stays above the minimum does
-     * not touch the fill window, or someone leaving at the wrong moment would stall a lobby that
-     * was about to go.
+     * again. A leave that stays above the minimum does not touch the fill window, or someone
+     * leaving at the wrong moment would stall a lobby that was about to go.
      */
     private void onLeave() {
         if (players.size() < rules.get().minPlayers()) {
@@ -165,14 +164,75 @@ public final class GameQueue {
      * caller's job if the instancer refuses.
      */
     public synchronized List<QueuedPlayer> claim(int limit) {
-        List<QueuedPlayer> ordered = new ArrayList<>(players.values());
-        ordered.sort(Comparator.comparingLong(QueuedPlayer::queuedAtMillis));
-
-        List<QueuedPlayer> claimed = new ArrayList<>(Math.min(limit, ordered.size()));
-        for (QueuedPlayer player : ordered) {
+        List<QueuedPlayer> claimed = new ArrayList<>(Math.min(limit, players.size()));
+        for (QueuedPlayer player : ordered()) {
             if (claimed.size() >= limit) {
                 break;
             }
+            claimed.add(player);
+        }
+        return take(claimed);
+    }
+
+    /**
+     * Like {@link #claim(int)}, but built around the biggest group of players who share a best
+     * region. Players with no known region fill the lobby to the limit; players from other
+     * regions are only added to reach {@code minimum}.
+     */
+    public synchronized List<QueuedPlayer> claimGrouped(int limit, int minimum,
+                                                        Function<UUID, String> regionOf) {
+        List<QueuedPlayer> unknown = new ArrayList<>();
+        Map<String, List<QueuedPlayer>> byRegion = new LinkedHashMap<>();
+        for (QueuedPlayer player : ordered()) {
+            String region = regionOf.apply(player.uuid());
+            if (region == null) {
+                unknown.add(player);
+            } else {
+                byRegion.computeIfAbsent(region, ignored -> new ArrayList<>()).add(player);
+            }
+        }
+
+        List<QueuedPlayer> largest = List.of();
+        for (List<QueuedPlayer> group : byRegion.values()) {
+            if (group.size() > largest.size()) {
+                largest = group;
+            }
+        }
+
+        List<QueuedPlayer> claimed = new ArrayList<>(limit);
+        fill(claimed, largest, limit);
+        fill(claimed, unknown, limit);
+        if (claimed.size() < minimum) {
+            List<QueuedPlayer> rest = new ArrayList<>();
+            for (List<QueuedPlayer> group : byRegion.values()) {
+                if (group != largest) {
+                    rest.addAll(group);
+                }
+            }
+            rest.sort(Comparator.comparingLong(QueuedPlayer::queuedAtMillis));
+            fill(claimed, rest, minimum);
+        }
+        return take(claimed);
+    }
+
+    private static void fill(List<QueuedPlayer> into, List<QueuedPlayer> from, int upTo) {
+        for (QueuedPlayer player : from) {
+            if (into.size() >= upTo) {
+                return;
+            }
+            into.add(player);
+        }
+    }
+
+    private List<QueuedPlayer> ordered() {
+        List<QueuedPlayer> ordered = new ArrayList<>(players.values());
+        ordered.sort(Comparator.comparingLong(QueuedPlayer::queuedAtMillis));
+        return ordered;
+    }
+
+    private List<QueuedPlayer> take(List<QueuedPlayer> chosen) {
+        List<QueuedPlayer> claimed = new ArrayList<>(chosen.size());
+        for (QueuedPlayer player : chosen) {
             if (players.remove(player.uuid()) != null) {
                 claimed.add(player);
             }

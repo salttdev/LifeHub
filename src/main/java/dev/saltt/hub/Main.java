@@ -13,6 +13,7 @@ import com.hypixel.hytale.server.core.util.Config;
 import dev.saltt.hub.database.Database;
 import dev.saltt.hub.database.repos.LifeMatchRepository;
 import dev.saltt.hub.database.repos.MatchPlayerStatsGameFlushRepository;
+import dev.saltt.hub.database.repos.PlayerRegionLatencyRepository;
 import dev.saltt.hub.database.repos.PlayerRepository;
 import dev.saltt.hub.database.repos.SurvivalGamesPlayerGameFlushRepository;
 import dev.saltt.hub.database.results.MatchResultWriter;
@@ -20,15 +21,18 @@ import dev.saltt.hub.database.results.SurvivalGamesResultSink;
 import dev.saltt.hub.grpc.LifePlayerServiceImpl;
 import dev.saltt.hub.grpc.MatchmakerServiceImpl;
 import dev.saltt.hub.matchmaking.MatchmakingService;
+import dev.saltt.hub.matchmaking.commands.ForfeitCommand;
+import dev.saltt.hub.matchmaking.commands.MatchmakingAdminCommand;
 import dev.saltt.hub.matchmaking.commands.QueueCommand;
+import dev.saltt.hub.matchmaking.commands.RejoinCommand;
 import dev.saltt.hub.matchmaking.commands.SpectateCommand;
+import dev.saltt.hub.matchmaking.region.GeoIpService;
 import io.grpc.Server;
-// The shaded transport is what grpc-netty-shaded ships, and it is the only one on the classpath.
-// ServerBuilder.forPort has no address form, so binding a specific interface needs this directly.
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder;
 
 import javax.annotation.Nonnull;
 import java.net.InetSocketAddress;
+import java.nio.file.Path;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -43,6 +47,7 @@ public class Main extends JavaPlugin {
 
     private Database database;
     private PlayerService playerService;
+    private GeoIpService geoIp;
 
     private Server grpcServer;
     private ExecutorService grpcExecutor;
@@ -54,8 +59,6 @@ public class Main extends JavaPlugin {
     public Main(@Nonnull JavaPluginInit init) {
         super(init);
         instance = this;
-        LOGGER.atInfo().log("Hello from %s version %s",
-                this.getName(), this.getManifest().getVersion().toString());
     }
 
     public static Main getInstance() { return instance; }
@@ -82,13 +85,22 @@ public class Main extends JavaPlugin {
                 .register(new SurvivalGamesResultSink(
                         new SurvivalGamesPlayerGameFlushRepository(database.jdbi())));
 
-        this.matchmaking = new MatchmakingService(config);
+        Path geoIpPath = Path.of(cfg.getGeoIpDatabasePath());
+        if (!geoIpPath.isAbsolute()) {
+            geoIpPath = getDataDirectory().resolve(geoIpPath);
+        }
+        this.geoIp = new GeoIpService(geoIpPath);
+        this.matchmaking = new MatchmakingService(config, geoIp,
+                new PlayerRegionLatencyRepository(database.jdbi()));
 
         getEventRegistry().registerGlobal(PlayerReadyEvent.class, this::onPlayerReady);
         getEventRegistry().registerGlobal(PlayerDisconnectEvent.class, this::onPlayerDisconnect);
 
         getCommandRegistry().registerCommand(new QueueCommand(matchmaking));
         getCommandRegistry().registerCommand(new SpectateCommand(matchmaking));
+        getCommandRegistry().registerCommand(new RejoinCommand(matchmaking));
+        getCommandRegistry().registerCommand(new ForfeitCommand(matchmaking));
+        getCommandRegistry().registerCommand(new MatchmakingAdminCommand(matchmaking));
 
         LOGGER.at(Level.INFO).log("[LifeHub] Setup complete");
     }
@@ -103,7 +115,6 @@ public class Main extends JavaPlugin {
             // mistyped or lost on a host rebuild does not silently expose an unauthenticated port.
             InetSocketAddress bind = new InetSocketAddress(cfg.getApiBind(), cfg.getApiPort());
             if (bind.isUnresolved()) {
-                // Netty's own failure for this names neither the value nor where it came from.
                 throw new IllegalStateException("ApiBind '" + cfg.getApiBind()
                         + "' could not be resolved; use an address on this host, or 0.0.0.0");
             }
@@ -144,6 +155,7 @@ public class Main extends JavaPlugin {
         }
         if (grpcExecutor != null) grpcExecutor.shutdown();
         if (playerService != null) playerService.close();
+        if (geoIp != null) geoIp.close();
         if (database != null) database.close();
 
         instance = null;
@@ -156,17 +168,12 @@ public class Main extends JavaPlugin {
         PlayerRef playerRef = store.getComponent(ref, PlayerRef.getComponentType());
         if (playerRef == null) return;
 
-        var handler = playerRef.getPacketHandler();
-
         InetSocketAddress address =
-                (InetSocketAddress) handler.getChannel().remoteAddress();
-
+                (InetSocketAddress) playerRef.getPacketHandler().getChannel().remoteAddress();
         String ip = address.getAddress().getHostAddress();
 
         playerService.onJoin(playerRef.getUuid(), playerRef.getUsername(), ip);
-
-        // They are on the hub, so whatever match the cache still holds them in is over for them.
-        matchmaking.onPlayerReady(playerRef.getUuid());
+        matchmaking.onPlayerReady(playerRef, ip);
     }
 
     private void onPlayerDisconnect(PlayerDisconnectEvent event) {
@@ -177,9 +184,6 @@ public class Main extends JavaPlugin {
         if (playerRef == null) return;
 
         playerService.onLeave(playerRef.getUuid());
-
-        // Includes players leaving for an instancer: the referral already took them out, and this
-        // covers anyone who quit while queued.
         matchmaking.onPlayerDisconnect(playerRef.getUuid());
     }
 }

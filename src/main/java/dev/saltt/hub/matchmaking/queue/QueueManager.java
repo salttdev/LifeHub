@@ -4,7 +4,6 @@ import dev.saltt.hub.HubConfig;
 import dev.saltt.hub.matchmaking.objects.QueueRules;
 import dev.saltt.hub.matchmaking.objects.QueuedPlayer;
 import dev.saltt.life.protocol.GameType;
-import com.hypixel.hytale.server.core.util.Config;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -14,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /**
  * Every queue on this hub, one per playable game type.
@@ -23,10 +23,10 @@ import java.util.UUID;
  */
 public final class QueueManager {
 
-    private final Config<HubConfig> config;
+    private final Supplier<HubConfig> config;
     private final Map<GameType, GameQueue> queues = new EnumMap<>(GameType.class);
 
-    public QueueManager(Config<HubConfig> config) {
+    public QueueManager(Supplier<HubConfig> config) {
         this.config = config;
         for (GameType type : playable()) {
             queues.put(type, new GameQueue(type, () -> rulesFor(type)));

@@ -3,6 +3,7 @@ package dev.saltt.hub.matchmaking.objects;
 import dev.saltt.life.protocol.GameType;
 import dev.saltt.life.protocol.MatchStatus;
 
+import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -11,14 +12,13 @@ import java.util.UUID;
 /**
  * A match the hub believes is live on an instancer.
  *
- * @param roster        who the hub sent to it. Kept as well as the heartbeat's own lists, because
- *                      a player who has not arrived yet appears in neither of those and still must
- *                      not be queued into a second lobby.
- * @param nodeId        the node the hub dispatched to, or null for a match adopted from a
- *                      heartbeat the hub has no record of (see MatchCache#onHeartbeat).
+ * @param roster           everyone the match holds. Until the first heartbeat this is who the hub
+ *                         sent; from then on it is what the node reports as claimed or connected,
+ *                         so a player the node has let go is free here too.
+ * @param nodeId           null only for a match adopted from a heartbeat that named no node.
  * @param lastBeatAtMillis arrival time of the newest heartbeat, which the reaper ages out.
  */
-public record LiveMatch(String matchId, GameType gameType, String nodeId, MatchStatus status,
+public record LiveMatch(String matchId, GameType gameType, @Nullable String nodeId, MatchStatus status,
                         Set<UUID> roster, Set<UUID> connected, Set<UUID> claimed,
                         int aliveCount, long createdAtMillis, long lastBeatAtMillis) {
 
@@ -28,43 +28,46 @@ public record LiveMatch(String matchId, GameType gameType, String nodeId, MatchS
         claimed = Collections.unmodifiableSet(new LinkedHashSet<>(claimed));
     }
 
-    public static LiveMatch dispatched(String matchId, GameType gameType, String nodeId,
+    public static LiveMatch dispatched(String matchId, GameType gameType, @Nullable String nodeId,
                                        Set<UUID> roster) {
         long now = System.currentTimeMillis();
         return new LiveMatch(matchId, gameType, nodeId, MatchStatus.SERVER_LOADING, roster,
                 Set.of(), Set.of(), 0, now, now);
     }
 
-    /**
-     * Folds in a heartbeat. The roster only grows: a player the instancer reports that the hub did
-     * not send is still someone who must not be queued elsewhere.
-     */
     public LiveMatch withHeartbeat(MatchStatus status, Set<UUID> connected, Set<UUID> claimed,
-                                   int aliveCount) {
-        Set<UUID> merged = new LinkedHashSet<>(roster);
-        merged.addAll(connected);
-        merged.addAll(claimed);
-        return new LiveMatch(matchId, gameType, nodeId, status, merged, connected, claimed,
+                                   int aliveCount, @Nullable String reportedNodeId) {
+        Set<UUID> held = new LinkedHashSet<>(claimed);
+        held.addAll(connected);
+        String node = nodeId != null ? nodeId
+                : reportedNodeId == null || reportedNodeId.isBlank() ? null : reportedNodeId;
+        return new LiveMatch(matchId, gameType, node, status, held, connected, claimed,
                 Math.max(0, aliveCount), createdAtMillis, System.currentTimeMillis());
     }
 
-    public boolean involves(UUID player) {
-        return roster.contains(player) || connected.contains(player) || claimed.contains(player);
+    public LiveMatch without(UUID player) {
+        Set<UUID> roster = new LinkedHashSet<>(this.roster);
+        Set<UUID> connected = new LinkedHashSet<>(this.connected);
+        Set<UUID> claimed = new LinkedHashSet<>(this.claimed);
+        roster.remove(player);
+        connected.remove(player);
+        claimed.remove(player);
+        return new LiveMatch(matchId, gameType, nodeId, status, roster, connected, claimed,
+                aliveCount, createdAtMillis, lastBeatAtMillis);
     }
 
-    /** Over, as far as the hub is concerned: it holds no players and takes no spectators. */
+    public boolean involves(UUID player) {
+        return roster.contains(player);
+    }
+
     public boolean isFinished() {
         return status == MatchStatus.ENDED;
     }
 
-    /** Whether a spectator can still be sent here. */
-    public boolean isWatchable() {
-        return status == MatchStatus.WAITING_FOR_PLAYERS || status == MatchStatus.STARTING
-                || status == MatchStatus.IN_PROGRESS;
-    }
-
-    public long ageMillis() {
-        return Math.max(0L, System.currentTimeMillis() - createdAtMillis);
+    /** Whether a player can still be sent here, to play or to watch. */
+    public boolean isJoinable() {
+        return status == MatchStatus.SERVER_LOADING || status == MatchStatus.WAITING_FOR_PLAYERS
+                || status == MatchStatus.STARTING || status == MatchStatus.IN_PROGRESS;
     }
 
     public long sinceLastBeatMillis() {

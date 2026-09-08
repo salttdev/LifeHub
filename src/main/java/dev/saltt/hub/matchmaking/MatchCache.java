@@ -7,22 +7,19 @@ import dev.saltt.life.protocol.MatchStatus;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
  * Every match the hub believes is running, fed by dispatch and kept current by heartbeats.
  *
  * <p>Advisory rather than exact. A node that dies stops beating and its matches age out here after
- * {@code staleAfterMillis}; a match the instancer created without the hub is adopted the first time
- * it beats. Capacity decisions err towards over-admitting, and the instancer refuses what it
- * genuinely cannot host.
+ * {@code staleAfterMillis}; a match the hub has no record of is adopted the first time it beats,
+ * which is how a restarted hub relearns what is running.
  */
 public final class MatchCache {
 
@@ -32,8 +29,7 @@ public final class MatchCache {
 
     /**
      * Players claimed for a lobby whose SetupMatch has not been answered yet. They are in no queue
-     * and in no match for as long as that call is in flight, and without this they could queue
-     * again and be placed in a second lobby before the first one answers.
+     * and in no match for as long as that call is in flight.
      */
     private final Set<UUID> reserved = ConcurrentHashMap.newKeySet();
 
@@ -47,20 +43,12 @@ public final class MatchCache {
         matches.put(match.matchId(), match);
     }
 
-    public Optional<LiveMatch> get(String matchId) {
-        return matchId == null ? Optional.empty() : Optional.ofNullable(matches.get(matchId));
-    }
-
     public Optional<LiveMatch> remove(String matchId) {
         return matchId == null ? Optional.empty() : Optional.ofNullable(matches.remove(matchId));
     }
 
     public Collection<LiveMatch> all() {
         return List.copyOf(matches.values());
-    }
-
-    public int size() {
-        return matches.size();
     }
 
     public Optional<LiveMatch> findByPlayer(UUID player) {
@@ -77,7 +65,6 @@ public final class MatchCache {
         return reserved.contains(player) || findByPlayer(player).isPresent();
     }
 
-    /** Held from the moment a lobby is claimed until the node answers, either way. */
     public void reserve(Collection<UUID> players) {
         reserved.addAll(players);
     }
@@ -86,11 +73,6 @@ public final class MatchCache {
         reserved.removeAll(players);
     }
 
-    public boolean isReserved(UUID player) {
-        return reserved.contains(player);
-    }
-
-    /** Live matches on one node, which is what the pool spends its capacity against. */
     public int countOnNode(String nodeId) {
         int count = 0;
         for (LiveMatch match : matches.values()) {
@@ -101,54 +83,29 @@ public final class MatchCache {
         return count;
     }
 
-    /**
-     * Folds a heartbeat in. A match with no entry here is adopted rather than dropped, so a hub
-     * restart relearns what is running instead of double-booking those players.
-     *
-     * <p>TODO: MatchHeartbeat carries no node id, so an adopted match cannot be attributed to the
-     * node it is running on and does not count against that node's capacity. Adding a node/server
-     * id to MatchHeartbeat would close that gap.
-     */
     public LiveMatch onHeartbeat(String matchId, GameType gameType, MatchStatus status,
-                                 Set<UUID> connected, Set<UUID> claimed, int aliveCount) {
+                                 Set<UUID> connected, Set<UUID> claimed, int aliveCount,
+                                 @Nullable String nodeId) {
         return matches.compute(matchId, (id, existing) -> {
             if (existing == null) {
-                LOG.info("adopting match " + id + " (" + gameType + ", " + status
-                        + "), which this hub has no record of dispatching");
-                return LiveMatch.dispatched(id, gameType, null, Set.of())
-                        .withHeartbeat(status, connected, claimed, aliveCount);
+                LOG.info("adopting match " + id + " (" + gameType + ", " + status + ") on node "
+                        + nodeId + ", which this hub has no record of dispatching");
+                existing = LiveMatch.dispatched(id, gameType, null, Set.of());
             }
-            return existing.withHeartbeat(status, connected, claimed, aliveCount);
+            return existing.withHeartbeat(status, connected, claimed, aliveCount, nodeId);
         });
     }
 
-    /**
-     * Takes one player out of whatever match holds them, without ending it. Called when a player
-     * turns up on the hub again: whatever the instancer still thinks, they are not in that match
-     * any more, and holding the association would keep them out of the queues.
-     */
-    public void releasePlayer(UUID player) {
+    /** Takes one player out of whatever match holds them, without ending it. */
+    public void removePlayer(UUID player) {
         for (LiveMatch match : matches.values()) {
-            if (!match.involves(player)) {
-                continue;
+            if (match.involves(player)) {
+                matches.replace(match.matchId(), match, match.without(player));
             }
-            Set<UUID> roster = new LinkedHashSet<>(match.roster());
-            Set<UUID> connected = new LinkedHashSet<>(match.connected());
-            Set<UUID> claimed = new LinkedHashSet<>(match.claimed());
-            roster.remove(player);
-            connected.remove(player);
-            claimed.remove(player);
-
-            matches.replace(match.matchId(), match, new LiveMatch(match.matchId(), match.gameType(),
-                    match.nodeId(), match.status(), roster, connected, claimed, match.aliveCount(),
-                    match.createdAtMillis(), match.lastBeatAtMillis()));
         }
     }
 
-    /**
-     * Drops matches that stopped beating, and finished ones the result never arrived for. Returns
-     * what it removed so the caller can release those players.
-     */
+    /** Drops matches that stopped beating. Returns them so the caller can release their players. */
     public List<LiveMatch> reapStale() {
         List<LiveMatch> reaped = new ArrayList<>();
         for (LiveMatch match : matches.values()) {
@@ -157,9 +114,8 @@ public final class MatchCache {
             }
             if (matches.remove(match.matchId(), match)) {
                 reaped.add(match);
-                LOG.log(Level.WARNING, "match " + match.matchId() + " on node "
-                        + (match.nodeId() == null ? "?" : match.nodeId()) + " went quiet for "
-                        + match.sinceLastBeatMillis() + "ms, dropping it");
+                LOG.warning("match " + match.matchId() + " on node " + match.nodeId()
+                        + " went quiet for " + match.sinceLastBeatMillis() + "ms, dropping it");
             }
         }
         return reaped;

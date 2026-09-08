@@ -57,7 +57,7 @@ public final class QueueJoinCommand extends AbstractPlayerCommand {
             case ALREADY_QUEUED -> context.sendMessage(Message.raw(
                     "You're already queued for " + Matchmaking.label(gameType) + "."));
             case ALREADY_IN_MATCH -> context.sendMessage(Message.raw(
-                    "You're already in a match."));
+                    "You're still in a match. /rejoin to get back in, or /forfeit to give it up."));
             case UNSUPPORTED_GAME_TYPE -> context.sendMessage(Message.raw(
                     "That game can't be queued for right now."));
         }

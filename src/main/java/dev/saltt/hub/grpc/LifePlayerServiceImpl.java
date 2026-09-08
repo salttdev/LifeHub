@@ -1,7 +1,11 @@
 package dev.saltt.hub.grpc;
 
 import com.google.protobuf.Timestamp;
-import dev.saltt.common.api.proto.*;
+import dev.saltt.life.protocol.GetPlayerByNameRequest;
+import dev.saltt.life.protocol.GetPlayerRequest;
+import dev.saltt.life.protocol.LifePlayerMessage;
+import dev.saltt.life.protocol.LifePlayerServiceGrpc;
+import dev.saltt.life.protocol.PostPlayerAck;
 import dev.saltt.hub.database.domains.LifePlayer;
 import dev.saltt.hub.database.repos.PlayerRepository;
 import io.grpc.Status;
