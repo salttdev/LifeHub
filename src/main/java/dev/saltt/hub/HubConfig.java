@@ -37,8 +37,7 @@ public class HubConfig {
     };
 
     private static final InstancerNode[] DEFAULT_NODES = {
-            new InstancerNode("instancer-na", "127.0.0.1", 50051, "127.0.0.1", 5530, 10, "na"),
-            new InstancerNode("instancer-eu", "127.0.0.1", 50053, "127.0.0.1", 5531, 10, "eu")
+            new InstancerNode("instancer-1", "127.0.0.1", 50051, "127.0.0.1", 5530, 10, "na")
     };
 
     private static final QueueRules[] DEFAULT_QUEUE_RULES = {

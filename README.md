@@ -44,7 +44,7 @@ consume the same artifact.
 | `ApiToken` | Secret shared with every node; signs transfer tickets. Must equal each node's `SharedSecret` |
 | `Regions` | `[{Id, Latitude, Longitude}]`, one per datacenter |
 | `HubRegion` | Which of those the hub itself runs in |
-| `GeoIpDatabasePath` | `GeoLite2-City.mmdb`, relative to the mod data directory unless absolute. Missing file: no estimates, measured pings and config order decide |
+| `GeoIpDatabasePath` | Default `GeoLite2-City.mmdb`, read from the mod data directory next to `LifeHub.json` (`mods/Saltt_LifeHub/GeoLite2-City.mmdb`) unless absolute. The file is reopened when replaced. Missing file: no estimates, measured pings and config order decide |
 | `LatencyBaseMillis`, `LatencyMillisPerKm` | Distance-to-ping estimate |
 | `AllowCrossRegionFallback` | Try the other region's nodes when the best one is full |
 | `GroupingDepth` | Queue size from which lobbies are grouped by region; 0 disables |
@@ -57,15 +57,20 @@ consume the same artifact.
 
 ## Local loop
 
+The defaults of both mods already describe one hub and one node on the same machine: hub game
+port 5520 and API port 8080, node `instancer-1` in region `na` with gRPC on 50051 and its game
+port on 5530, secrets equal. Only the node's listen port has to be set by hand.
+
 1. MySQL: `docker run -d --name life-mysql -e MYSQL_DATABASE=life -e MYSQL_USER=life
    -e MYSQL_PASSWORD=change-me -e MYSQL_ROOT_PASSWORD=root -p 3306:3306 mysql:8`
-2. `./gradlew devServer` here (hub on the default game port, API on `ApiPort`).
-3. In LifeInstancer, set `RpcConfig.json` to point `MatchmakerHost/Port` at the hub's API,
-   `NodeId`/`Region` to match one `InstancerNodes` entry, `SharedSecret` to the hub's `ApiToken`,
-   and place an instance template on that dev server. Run its `devServer` on a different port and
-   put that port in the hub's `PlayerPort` for the node.
-4. Drop `GeoLite2-City.mmdb` in the hub's mod data directory, or leave it out to test without
-   estimates.
+2. `./gradlew devServer` here. First start writes `devserver/mods/Saltt_LifeHub/LifeHub.json`.
+3. In LifeInstancer: place an instance template under the dev server's assets and list it in
+   `MapsConfig.json` with a `MapConfig` that has spawns, then start its dev server listening on
+   5530 (the server flag is `--bind 0.0.0.0:5530`; pass it through the run configuration).
+4. Optional: `GeoLite2-City.mmdb` into `devserver/mods/Saltt_LifeHub/`. Without it every player
+   is region-less and lobbies land on the first configured region.
+5. Two players on the hub, `/queue join sg`, wait out `FillWindowSeconds`, and watch
+   `/mm matches` on the hub and the `[Match ...]` lines on the node.
 
 ## Build
 
