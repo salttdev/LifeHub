@@ -10,11 +10,11 @@ hytale {
     useVersion("latest")
 
     repositories {
-        maven("https://jitpack.io")
+        // Any external repositories besides: MavenLocal, MavenCentral, HytaleMaven, and CurseMaven
     }
 
-    // Dependencies are declared in build.gradle.kts.
     dependencies {
+        // Any external dependency you also want to include
     }
 
     manifest {

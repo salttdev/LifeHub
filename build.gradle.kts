@@ -1,54 +1,63 @@
 plugins {
-    `maven-publish`
+    java
     id("com.gradleup.shadow") version "8.3.0"
 }
 
-group = "dev.saltt"
+val javaVersion = 25
+val grpcVersion = "1.75.0"
+
 version = "1.2.0"
 
-val grpcVersion = "1.74.0"
-val protobufVersion = "4.31.1"
-
-// Must match the grpc and protobuf versions LifeProtocol was generated against.
-val protocolVersion = "v1.2.0"
-
 repositories {
-    mavenLocal()
-    maven("https://jitpack.io")
     mavenCentral()
+
+    maven {
+        url = uri("https://jitpack.io")
+
+        credentials {
+            username = "jp_1ooht4ug7h5aso9sm2voqhjtjh"
+        }
+    }
 }
 
 dependencies {
-    implementation("com.github.Life-Steal:LifeProtocol:$protocolVersion")
-    implementation("com.google.protobuf:protobuf-java:$protobufVersion")
-    implementation("io.grpc:grpc-netty-shaded:$grpcVersion")
-    implementation("io.grpc:grpc-stub:$grpcVersion")
-    implementation("io.grpc:grpc-protobuf:$grpcVersion")
+    compileOnly("org.jetbrains:annotations:26.0.2")
 
-    implementation("org.jdbi:jdbi3-core:3.45.4")
+    implementation("org.flywaydb:flyway-core:12.9.0")
+    implementation("org.flywaydb:flyway-mysql:12.9.0")
+
+    implementation("com.github.Life-Steal:LifeProtocol:v1.2.0")
+
+    implementation("com.maxmind.geoip2:geoip2:5.1.0")
+
+    implementation("org.mariadb.jdbc:mariadb-java-client:3.5.3")
     implementation("com.zaxxer:HikariCP:6.3.0")
-    implementation("org.flywaydb:flyway-core:11.1.0")
-    implementation("org.flywaydb:flyway-mysql:11.1.0")
-    runtimeOnly("org.mariadb.jdbc:mariadb-java-client:3.5.3")
+    implementation("org.jdbi:jdbi3-core:3.45.4")
+    implementation("org.slf4j:slf4j-jdk14:2.0.16")
 
-    implementation("com.maxmind.geoip2:geoip2:5.0.2")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
-    implementation("org.slf4j:slf4j-api:2.0.16")
-    // Routes Hikari and Flyway logging into java.util.logging, which the server log shows.
-    runtimeOnly("org.slf4j:slf4j-jdk14:2.0.16")
+    implementation("io.grpc:grpc-netty-shaded:$grpcVersion")
+    implementation("io.grpc:grpc-protobuf:$grpcVersion")
+    implementation("io.grpc:grpc-stub:$grpcVersion")
 
-    compileOnly("com.google.code.findbugs:jsr305:3.0.2")
+    compileOnly(fileTree("libs") {
+        include("*.jar")
+    })
 
-    testImplementation(platform("org.junit:junit-bom:5.10.0"))
+    testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(javaVersion)
     }
+
     withSourcesJar()
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 tasks.shadowJar {
@@ -61,14 +70,23 @@ tasks.shadowJar {
     }
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            from(components["java"])
-        }
-    }
+val lifeGroup = "life"
+
+tasks.named("clean") {
+    group = lifeGroup
 }
 
-tasks.test {
-    useJUnitPlatform()
+tasks.named("devServer") {
+    group = lifeGroup
+}
+
+tasks.named("shadowJar") {
+    group = lifeGroup
+    mustRunAfter("clean")
+}
+
+tasks.register("cleanShadowJar") {
+    group = lifeGroup
+    description = "Clean, then build the shadow jar."
+    dependsOn("clean", "shadowJar")
 }
