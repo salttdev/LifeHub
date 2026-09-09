@@ -2,7 +2,6 @@ package dev.saltt.hub.grpc;
 
 import dev.saltt.hub.database.results.MatchResultWriter;
 import dev.saltt.hub.matchmaking.MatchmakingService;
-import dev.saltt.hub.matchmaking.objects.LiveMatch;
 import dev.saltt.life.protocol.GameType;
 import dev.saltt.life.protocol.HeartbeatAck;
 import dev.saltt.life.protocol.MatchHeartbeat;
@@ -82,10 +81,7 @@ public final class MatchmakerServiceImpl extends MatchmakerServiceGrpc.Matchmake
 
             // Removed first: the players are free to queue again as soon as they are back on the
             // hub, whatever the write does.
-            LiveMatch finished = matchmaking.onMatchFinished(request);
-            String nodeId = !request.getNodeId().isBlank() ? request.getNodeId()
-                    : finished == null ? null : finished.nodeId();
-
+            String nodeId = matchmaking.onMatchFinished(request);
             results.write(request, nodeId);
 
             LOG.info("match " + request.getMatchId() + " (" + request.getGameType() + ") finished"

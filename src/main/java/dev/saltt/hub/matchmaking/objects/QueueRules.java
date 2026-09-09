@@ -69,6 +69,11 @@ public class QueueRules {
     public QueueRules() {
     }
 
+    /** The built-in defaults for a game type the config names no rules for. */
+    public QueueRules(GameType gameType) {
+        this.gameType = gameType.name();
+    }
+
     public QueueRules(GameType gameType, int minPlayers, int maxPlayers,
                       int fillWindowSeconds, int maxWaitAfterMinSeconds) {
         this.gameType = gameType.name();

@@ -2,12 +2,16 @@ package dev.saltt.hub.database.domains;
 
 import java.util.UUID;
 
+/**
+ * @param placement 0 when the match was abandoned and nobody placed
+ * @param teamId    always null until MatchResult carries teams
+ */
 public record SurvivalGamesPlayer(
         UUID matchId,
         UUID playerUuid,
-        int placement,        // 0 when the match was abandoned and nobody placed
+        int placement,
         long timeAlive,
-        UUID killerUuid,      // nullable
-        UUID teamId,          // nullable (team_uuid)
-        String causeOfDeath   // nullable
+        UUID killerUuid,
+        UUID teamId,
+        String causeOfDeath
 ) {}

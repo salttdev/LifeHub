@@ -9,7 +9,7 @@ version = "1.2.0"
 val grpcVersion = "1.74.0"
 val protobufVersion = "4.31.1"
 
-// Must stay in step with the grpc and protobuf versions LifeProtocol was generated against.
+// Must match the grpc and protobuf versions LifeProtocol was generated against.
 val protocolVersion = "v1.2.0"
 
 repositories {
@@ -29,7 +29,7 @@ dependencies {
     implementation("com.zaxxer:HikariCP:6.3.0")
     implementation("org.flywaydb:flyway-core:11.1.0")
     implementation("org.flywaydb:flyway-mysql:11.1.0")
-    runtimeOnly("com.mysql:mysql-connector-j:9.1.0")
+    runtimeOnly("org.mariadb.jdbc:mariadb-java-client:3.5.3")
 
     implementation("com.maxmind.geoip2:geoip2:5.0.2")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")

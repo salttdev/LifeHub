@@ -12,10 +12,10 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.util.Config;
 import dev.saltt.hub.database.Database;
 import dev.saltt.hub.database.repos.LifeMatchRepository;
-import dev.saltt.hub.database.repos.MatchPlayerStatsGameFlushRepository;
+import dev.saltt.hub.database.repos.MatchPlayerStatsRepository;
 import dev.saltt.hub.database.repos.PlayerRegionLatencyRepository;
 import dev.saltt.hub.database.repos.PlayerRepository;
-import dev.saltt.hub.database.repos.SurvivalGamesPlayerGameFlushRepository;
+import dev.saltt.hub.database.repos.SurvivalGamesPlayerRepository;
 import dev.saltt.hub.database.results.MatchResultWriter;
 import dev.saltt.hub.database.results.SurvivalGamesResultSink;
 import dev.saltt.hub.grpc.LifePlayerServiceImpl;
@@ -41,7 +41,6 @@ import java.util.logging.Level;
 public class Main extends JavaPlugin {
 
     private static final HytaleLogger LOGGER = HytaleLogger.forEnclosingClass();
-    private static Main instance;
 
     private final Config<HubConfig> config = this.withConfig("LifeHub", HubConfig.CODEC);
 
@@ -58,12 +57,7 @@ public class Main extends JavaPlugin {
 
     public Main(@Nonnull JavaPluginInit init) {
         super(init);
-        instance = this;
     }
-
-    public static Main getInstance() { return instance; }
-    public PlayerService players() { return playerService; }
-    public MatchmakingService matchmaking() { return matchmaking; }
 
     @Override
     protected void setup() {
@@ -77,13 +71,12 @@ public class Main extends JavaPlugin {
         this.playerRepo = new PlayerRepository(database.jdbi());
         this.playerService = new PlayerService(playerRepo);
 
-        // One writer for every game type: the common rows here, the per-mode table in a sink.
         this.matchResults = new MatchResultWriter(
                 database.jdbi(),
                 new LifeMatchRepository(database.jdbi()),
-                new MatchPlayerStatsGameFlushRepository(database.jdbi()))
+                new MatchPlayerStatsRepository(database.jdbi()))
                 .register(new SurvivalGamesResultSink(
-                        new SurvivalGamesPlayerGameFlushRepository(database.jdbi())));
+                        new SurvivalGamesPlayerRepository(database.jdbi())));
 
         Path geoIpPath = Path.of(cfg.getGeoIpDatabasePath());
         if (!geoIpPath.isAbsolute()) {
@@ -129,12 +122,11 @@ public class Main extends JavaPlugin {
             LOGGER.at(Level.INFO).log("[LifeHub] gRPC server listening on "
                     + cfg.getApiBind() + ":" + cfg.getApiPort());
         } catch (Exception e) {
-            LOGGER.at(Level.SEVERE).log("[LifeHub] Failed to start gRPC server on "
-                    + cfg.getApiBind() + ":" + cfg.getApiPort() + ": " + e.getMessage());
+            // Without the API the nodes cannot report back, so a hub without it must not place matches.
+            throw new IllegalStateException("[LifeHub] Failed to start gRPC server on "
+                    + cfg.getApiBind() + ":" + cfg.getApiPort(), e);
         }
 
-        // After the server is up: a match placed before the instancers can report back would beat
-        // its way into the cache with nowhere to answer.
         matchmaking.start();
     }
 
@@ -157,8 +149,6 @@ public class Main extends JavaPlugin {
         if (playerService != null) playerService.close();
         if (geoIp != null) geoIp.close();
         if (database != null) database.close();
-
-        instance = null;
     }
 
     private void onPlayerReady(PlayerReadyEvent event) {
@@ -183,7 +173,6 @@ public class Main extends JavaPlugin {
         PlayerRef playerRef = store.getComponent(ref, PlayerRef.getComponentType());
         if (playerRef == null) return;
 
-        playerService.onLeave(playerRef.getUuid());
         matchmaking.onPlayerDisconnect(playerRef.getUuid());
     }
 }

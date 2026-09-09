@@ -3,7 +3,7 @@ package dev.saltt.hub.database.results;
 import dev.saltt.hub.database.domains.LifeMatch;
 import dev.saltt.hub.database.domains.MatchPlayerStats;
 import dev.saltt.hub.database.repos.LifeMatchRepository;
-import dev.saltt.hub.database.repos.MatchPlayerStatsGameFlushRepository;
+import dev.saltt.hub.database.repos.MatchPlayerStatsRepository;
 import dev.saltt.life.protocol.GameType;
 import dev.saltt.life.protocol.MatchResult;
 import dev.saltt.life.protocol.PlayerResult;
@@ -29,11 +29,11 @@ public final class MatchResultWriter {
 
     private final Jdbi jdbi;
     private final LifeMatchRepository matches;
-    private final MatchPlayerStatsGameFlushRepository stats;
+    private final MatchPlayerStatsRepository stats;
     private final Map<GameType, MatchResultSink> sinks = new EnumMap<>(GameType.class);
 
     public MatchResultWriter(Jdbi jdbi, LifeMatchRepository matches,
-                             MatchPlayerStatsGameFlushRepository stats) {
+                             MatchPlayerStatsRepository stats) {
         this.jdbi = jdbi;
         this.matches = matches;
         this.stats = stats;

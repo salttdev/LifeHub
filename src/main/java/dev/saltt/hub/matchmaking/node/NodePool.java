@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 
@@ -17,6 +19,9 @@ public final class NodePool {
 
     private final Supplier<List<InstancerNode>> configured;
     private final MatchCache matches;
+
+    /** Entries already warned about, so a bad config line is not logged on every pass. */
+    private final Set<String> warnedUnusable = ConcurrentHashMap.newKeySet();
 
     /** Read per call, so nodes edited in LifeHub.json are picked up without a restart. */
     public NodePool(Supplier<List<InstancerNode>> configured, MatchCache matches) {
@@ -29,7 +34,7 @@ public final class NodePool {
         for (InstancerNode node : configured.get()) {
             if (node.isUsable()) {
                 usable.add(node);
-            } else {
+            } else if (warnedUnusable.add(node.toString())) {
                 LOG.warning("ignoring instancer node with an incomplete entry: " + node);
             }
         }

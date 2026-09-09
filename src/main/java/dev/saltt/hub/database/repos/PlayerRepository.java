@@ -21,8 +21,6 @@ public final class PlayerRepository {
         this.jdbi = jdbi;
     }
 
-    // ---- writes ----
-    
     public void observe(UUID uuid, String displayName, String ip, Instant when) {
         List<String> ips = (ip == null || ip.isBlank()) ? List.of() : List.of(ip);
         save(new LifePlayer(uuid, displayName, when, when, List.of(), ips));
@@ -40,7 +38,7 @@ public final class PlayerRepository {
                 INSERT INTO life_player (uuid, display_name, first_join, last_joined)
                 VALUES (:uuid, :display_name, :first_join, :last_joined)
                 ON DUPLICATE KEY UPDATE
-                    display_name = VALUES(display_name),
+                    display_name = COALESCE(VALUES(display_name), display_name),
                     last_joined  = GREATEST(last_joined, VALUES(last_joined))
                 """)
                 .bind("uuid", uuid)
@@ -73,8 +71,6 @@ public final class PlayerRepository {
             b.bind("uuid", uuid).bind("val", v).bind("seen", when).add();
         b.execute();
     }
-
-    // ---- reads ----
 
     public Optional<LifePlayer> findByUuid(UUID uuid) {
         return jdbi.withHandle(h -> load(h, uuid.toString()));

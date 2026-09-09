@@ -51,7 +51,7 @@ public final class QueueManager {
                 return rules;
             }
         }
-        return new QueueRules(type, 2, 24, 20, 120);
+        return new QueueRules(type);
     }
 
     public List<GameQueue> all() {

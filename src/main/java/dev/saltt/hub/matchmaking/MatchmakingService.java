@@ -20,6 +20,7 @@ import dev.saltt.life.protocol.MatchStatus;
 import dev.saltt.life.protocol.PlayerResult;
 
 import javax.annotation.Nullable;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -217,7 +218,11 @@ public final class MatchmakingService implements AutoCloseable {
         if (latencyRepo != null) {
             dbExecutor.execute(() -> {
                 try {
-                    latency.setMeasured(uuid, latencyRepo.load(uuid));
+                    Map<String, Integer> measured = latencyRepo.load(uuid);
+                    // They may have left while this loaded; storing then would leak a profile.
+                    if (players.isOnline(uuid)) {
+                        latency.setMeasured(uuid, measured);
+                    }
                 } catch (Exception e) {
                     LOG.log(Level.WARNING, "could not load latency samples for " + uuid, e);
                 }
@@ -246,9 +251,12 @@ public final class MatchmakingService implements AutoCloseable {
         return match;
     }
 
-    /** Drops the match and keeps the pings the node measured. Null if the hub never knew it. */
+    /**
+     * Drops the match and keeps the pings the node measured. Returns the node that ran it, from the
+     * result or from the hub's own record; null if neither knows.
+     */
     @Nullable
-    public LiveMatch onMatchFinished(MatchResult result) {
+    public String onMatchFinished(MatchResult result) {
         LiveMatch finished = matches.remove(result.getMatchId()).orElse(null);
         String nodeId = !result.getNodeId().isBlank() ? result.getNodeId()
                 : finished == null ? null : finished.nodeId();
@@ -261,7 +269,7 @@ public final class MatchmakingService implements AutoCloseable {
                 }
             }
         }
-        return finished;
+        return nodeId;
     }
 
     private void recordPing(UUID player, String region, int rttMillis) {

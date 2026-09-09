@@ -26,7 +26,7 @@ public final class SpectateCommand extends AbstractPlayerCommand {
     private final MatchmakingService matchmaking;
 
     public SpectateCommand(@Nullable MatchmakingService matchmaking) {
-        super("watch", "Travel to the match a player is in");
+        super("spectate", "Travel to the match a player is in");
         this.matchmaking = matchmaking;
 
         // By uuid, not PLAYER_REF: the player being watched is on an instancer, not on this hub.

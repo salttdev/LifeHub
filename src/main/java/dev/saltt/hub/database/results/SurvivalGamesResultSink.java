@@ -1,7 +1,7 @@
 package dev.saltt.hub.database.results;
 
 import dev.saltt.hub.database.domains.SurvivalGamesPlayer;
-import dev.saltt.hub.database.repos.SurvivalGamesPlayerGameFlushRepository;
+import dev.saltt.hub.database.repos.SurvivalGamesPlayerRepository;
 import dev.saltt.life.protocol.GameType;
 import dev.saltt.life.protocol.MatchResult;
 import dev.saltt.life.protocol.PlayerResult;
@@ -16,9 +16,9 @@ import java.util.UUID;
  */
 public final class SurvivalGamesResultSink implements MatchResultSink {
 
-    private final SurvivalGamesPlayerGameFlushRepository players;
+    private final SurvivalGamesPlayerRepository players;
 
-    public SurvivalGamesResultSink(SurvivalGamesPlayerGameFlushRepository players) {
+    public SurvivalGamesResultSink(SurvivalGamesPlayerRepository players) {
         this.players = players;
     }
 

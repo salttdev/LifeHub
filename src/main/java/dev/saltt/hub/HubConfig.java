@@ -41,7 +41,7 @@ public class HubConfig {
     };
 
     private static final QueueRules[] DEFAULT_QUEUE_RULES = {
-            new QueueRules(GameType.SURVIVAL_GAMES, 2, 24, 20, 120)
+            new QueueRules(GameType.SURVIVAL_GAMES)
     };
 
     public static final BuilderCodec<HubConfig> CODEC = BuilderCodec.builder(HubConfig.class, HubConfig::new)
@@ -115,7 +115,7 @@ public class HubConfig {
                     (c, info) -> c.referTimeoutSeconds).add()
             .build();
 
-    private String jdbcUrl    = "jdbc:mysql://localhost:3306/life?connectionTimeZone=UTC";
+    private String jdbcUrl    = "jdbc:mariadb://localhost:3306/life?allowPublicKeyRetrieval=true";
     private String dbUser     = "life";
     private String dbPassword = "change-me";
     private int    dbPoolSize = 10;
