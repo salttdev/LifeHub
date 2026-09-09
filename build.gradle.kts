@@ -34,6 +34,8 @@ dependencies {
     implementation("com.maxmind.geoip2:geoip2:5.0.2")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
     implementation("org.slf4j:slf4j-api:2.0.16")
+    // Routes Hikari and Flyway logging into java.util.logging, which the server log shows.
+    runtimeOnly("org.slf4j:slf4j-jdk14:2.0.16")
 
     compileOnly("com.google.code.findbugs:jsr305:3.0.2")
 

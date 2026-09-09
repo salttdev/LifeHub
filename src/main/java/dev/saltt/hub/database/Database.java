@@ -18,6 +18,9 @@ public final class Database implements AutoCloseable {
 
     public static Database connect(HubConfig cfg) {
         HikariConfig hc = new HikariConfig();
+        // Named explicitly: DriverManager cannot see a driver that lives in the plugin's own
+        // classloader, so Hikari has to load and call it directly.
+        hc.setDriverClassName("org.mariadb.jdbc.Driver");
         hc.setJdbcUrl(cfg.getJdbcUrl());
         hc.setUsername(cfg.getDbUser());
         hc.setPassword(cfg.getDbPassword());
