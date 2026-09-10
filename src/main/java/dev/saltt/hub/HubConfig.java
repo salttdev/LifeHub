@@ -28,6 +28,7 @@ public class HubConfig {
     private static final int DEFAULT_GROUPING_DEPTH = 16;
     private static final int DEFAULT_LATENCY_BASE_MILLIS = 10;
     private static final double DEFAULT_LATENCY_MILLIS_PER_KM = 0.02;
+    private static final int DEFAULT_ACCEPTABLE_PING_MILLIS = 80;
     private static final String DEFAULT_HUB_REGION = "na";
     private static final String DEFAULT_GEOIP_PATH = "GeoLite2-City.mmdb";
 
@@ -79,6 +80,10 @@ public class HubConfig {
             .append(new KeyedCodec<Double>("LatencyMillisPerKm", Codec.DOUBLE),
                     (c, v, info) -> c.latencyMillisPerKm = v == null ? DEFAULT_LATENCY_MILLIS_PER_KM : v,
                     (c, info) -> c.latencyMillisPerKm).add()
+            // Ping over this counts against a region when a lobby's best-region vote is tied.
+            .append(new KeyedCodec<Integer>("AcceptablePingMillis", Codec.INTEGER),
+                    (c, v, info) -> c.acceptablePingMillis = v == null ? DEFAULT_ACCEPTABLE_PING_MILLIS : v,
+                    (c, info) -> c.acceptablePingMillis).add()
             .append(new KeyedCodec<Boolean>("AllowCrossRegionFallback", Codec.BOOLEAN),
                     (c, v, info) -> c.allowCrossRegionFallback = v == null || v,
                     (c, info) -> c.allowCrossRegionFallback).add()
@@ -129,6 +134,7 @@ public class HubConfig {
     private String geoIpDatabasePath = DEFAULT_GEOIP_PATH;
     private int latencyBaseMillis = DEFAULT_LATENCY_BASE_MILLIS;
     private double latencyMillisPerKm = DEFAULT_LATENCY_MILLIS_PER_KM;
+    private int acceptablePingMillis = DEFAULT_ACCEPTABLE_PING_MILLIS;
     private boolean allowCrossRegionFallback = true;
     private int groupingDepth = DEFAULT_GROUPING_DEPTH;
 
@@ -172,6 +178,10 @@ public class HubConfig {
 
     public double getLatencyMillisPerKm() {
         return latencyMillisPerKm <= 0 ? DEFAULT_LATENCY_MILLIS_PER_KM : latencyMillisPerKm;
+    }
+
+    public int getAcceptablePingMillis() {
+        return acceptablePingMillis <= 0 ? DEFAULT_ACCEPTABLE_PING_MILLIS : acceptablePingMillis;
     }
 
     public boolean isAllowCrossRegionFallback() {

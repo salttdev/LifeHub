@@ -79,7 +79,8 @@ class MatchmakerTest {
     private final QueueManager queues = new QueueManager(() -> config);
     private final MatchCache matches = new MatchCache(30_000);
     private final LatencyModel latency = new LatencyModel(() -> new LatencyModel.Settings(
-            config.getRegions(), config.getLatencyBaseMillis(), config.getLatencyMillisPerKm()));
+            config.getRegions(), config.getLatencyBaseMillis(), config.getLatencyMillisPerKm(),
+            config.getAcceptablePingMillis()));
     private final Matchmaker matchmaker = new Matchmaker(queues, matches,
             new NodePool(config::getInstancerNodes, matches), client, players, latency,
             new RegionSelector(latency), new Tickets(config::getApiToken), () -> config);

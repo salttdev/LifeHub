@@ -71,7 +71,7 @@ public final class MatchmakingService implements AutoCloseable {
         this.players = new EnginePlayers();
         this.latency = new LatencyModel(() -> new LatencyModel.Settings(
                 config.get().getRegions(), config.get().getLatencyBaseMillis(),
-                config.get().getLatencyMillisPerKm()));
+                config.get().getLatencyMillisPerKm(), config.get().getAcceptablePingMillis()));
         this.tickets = new Tickets(() -> config.get().getApiToken());
         this.matchmaker = new Matchmaker(queues, matches, nodes, client, players, latency,
                 new RegionSelector(latency), tickets, config::get);

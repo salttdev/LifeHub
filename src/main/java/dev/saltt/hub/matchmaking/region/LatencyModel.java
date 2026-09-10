@@ -14,7 +14,13 @@ import java.util.function.Supplier;
  */
 public final class LatencyModel {
 
-    public record Settings(List<RegionConfig> regions, double baseMillis, double millisPerKm) {}
+    public record Settings(List<RegionConfig> regions, double baseMillis, double millisPerKm,
+                           int acceptablePingMillis) {
+
+        public Settings(List<RegionConfig> regions, double baseMillis, double millisPerKm) {
+            this(regions, baseMillis, millisPerKm, 80);
+        }
+    }
 
     private static final class Profile {
         volatile GeoIpService.Coordinates coordinates;
@@ -30,6 +36,11 @@ public final class LatencyModel {
 
     public List<RegionConfig> regions() {
         return settings.get().regions();
+    }
+
+    /** Ping above which a region counts as a bad fit for a player when breaking a vote tie. */
+    public int acceptablePingMillis() {
+        return settings.get().acceptablePingMillis();
     }
 
     public void setLocation(UUID player, GeoIpService.Coordinates coordinates) {
